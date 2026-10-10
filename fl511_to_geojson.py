@@ -6,7 +6,9 @@ For operational use, obtain FDOT's permission/authorized data access and verify 
 """
 from __future__ import annotations
 
+import gzip
 import html
+import io
 import json
 import os
 from datetime import datetime, timezone
@@ -43,6 +45,16 @@ def get_json(url: str, params: dict | None = None) -> dict:
         raise RuntimeError(f"Could not retrieve {url.split('?')[0]}: {exc}") from exc
     if len(raw) > 8_000_000:
         raise RuntimeError("FL511 response exceeds safe 8 MB limit")
+    # Some FL511 endpoints return a GZIP body even if the client did not
+    # explicitly request compression. Recognize it by its magic bytes.
+    if raw.startswith(b"\x1f\x8b"):
+        try:
+            with gzip.GzipFile(fileobj=io.BytesIO(raw), mode="rb") as stream:
+                raw = stream.read(8_000_001)
+        except (OSError, EOFError) as exc:
+            raise RuntimeError("FL511 returned invalid GZIP data") from exc
+        if len(raw) > 8_000_000:
+            raise RuntimeError("Decompressed FL511 response exceeds safe 8 MB limit")
     try:
         payload = json.loads(raw)
     except (ValueError, UnicodeDecodeError) as exc:
