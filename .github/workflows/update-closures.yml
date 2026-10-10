@@ -1,0 +1,46 @@
+name: Update FL511 closure GeoJSON
+on:
+  workflow_dispatch:
+  schedule:
+    # Four runs per hour; GitHub scheduled runs may be delayed or skipped.
+    - cron: '7,22,37,52 * * * *'
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency:
+  group: fl511-pages
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Run converter checks
+        run: python -m unittest discover -s tests -v
+      - name: Retrieve and convert FL511 closures
+        env:
+          FL511_REGIONS: Panhandle,Northeast
+        run: python fl511_to_geojson.py
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+      - name: Upload website and GeoJSON
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: docs
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy new GeoJSON to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
